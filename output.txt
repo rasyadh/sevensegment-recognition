@@ -1,0 +1,2 @@
+x, y, w, h: (0, 0, 252, 100)
+digits contours detected : 0
