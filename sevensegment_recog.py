@@ -1,6 +1,6 @@
+import os
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 
 DIGITS_LOOKUP = {
     (1, 1, 1, 1, 1, 1, 0): 0,
@@ -59,7 +59,6 @@ def helper_extract(one_d_array, threshold=20):
     temp = 0
 
     for i in range(len(one_d_array)):
-        
         if one_d_array[i] < 12 * 255:
             if flag > threshold:
                 start = i - flag
@@ -82,15 +81,22 @@ def find_digits_positions(image, reserved_threshold=20):
     digits_positions = []
     # calculate horizontal position
     img_array = np.sum(image, axis=0)
+    print('img array horizontal: {}'.format(img_array))
     horizontal_position = helper_extract(img_array, threshold=reserved_threshold)
+    print('horizontal position: {}'.format(horizontal_position))
+    print()
     # calculate vertical position
     img_array = np.sum(image, axis=1)
+    print('img array vertical: {}'.format(img_array))
     vertical_position = helper_extract(img_array, threshold=reserved_threshold * 4)
+    print('vertical position: {}'.format(vertical_position))
+    print()
     # make vertical position has only one element
     if len(vertical_position) > 1:
         vertical_position = [
             (vertical_position[0][0], vertical_position[len(vertical_position) - 1][1])
         ]
+    print('after vertical position change to one element')
     print('horizontal position : {}'.format(horizontal_position))
     print('vertical position : {}'.format(vertical_position))
     # create coordinat from horizontal and vertical positions
@@ -99,7 +105,7 @@ def find_digits_positions(image, reserved_threshold=20):
             digits_positions.append(list(zip(horizontal, vertical)))
     # check if digits's found
     # if not throw assertion error
-    assert len(digits_positions) > 0, "Failed to find digits's positions"
+    # assert len(digits_positions) > 0, "Failed to find digits's positions"
     return digits_positions
 
 def recognize_digits_line_method(digits_positions, output_img, input_img):
@@ -168,8 +174,14 @@ def recognize_digits_line_method(digits_positions, output_img, input_img):
         cv2.putText(output_img, str(digit), (x0 + 3, y0 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 128, 0), 2)
     return digits
 
-if __name__ == '__main__':
-    blurred, gray = load_image('test/39A99.jpg')
+def test_dataset(img_path):
+    cwd = os.getcwd()
+    success = []
+    for img in os.listdir(os.path.join(cwd, img_path)):
+        main(os.path.join(cwd, img_path, img))
+
+def main(img_name):
+    blurred, gray = load_image(img_name)
     print(blurred.shape)
     output = blurred
     dst = preprocess(blurred, THRESHOLD)
@@ -180,3 +192,19 @@ if __name__ == '__main__':
     cv2.imshow('result', output)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    image_test_path = 'test'
+    test_dataset(image_test_path)
+
+    # blurred, gray = load_image('test/5A155.png')
+    # print(blurred.shape)
+    # output = blurred
+    # dst = preprocess(blurred, THRESHOLD)
+    # digits_positions = find_digits_positions(dst)
+    # print('digits position : {}'.format(digits_positions))
+    # digits = recognize_digits_line_method(digits_positions, output, dst)
+    # print('digits : {}'.format(digits))
+    # cv2.imshow('result', output)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()

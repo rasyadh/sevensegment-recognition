@@ -1,3 +1,4 @@
+import os
 from imutils.perspective import four_point_transform
 from imutils import contours
 import imutils
@@ -14,9 +15,12 @@ DIGITS_LOOKUP = {
     (0, 1, 1, 1, 0, 1, 0): 4,
     (1, 1, 0, 1, 0, 1, 1): 5,
     (1, 1, 0, 1, 1, 1, 1): 6,
+    (0, 1, 0, 1, 1, 1, 1): 6,
     (1, 1, 1, 0, 0, 1, 0): 7,
+    (1, 0, 1, 0, 0, 1, 0): 7,
     (1, 1, 1, 1, 1, 1, 1): 8,
-    (1, 1, 1, 1, 0, 1, 1): 9
+    (1, 1, 1, 1, 0, 1, 1): 9,
+    (1, 1, 1, 1, 0, 1, 0): 9
 }
 
 def load_image(path):    
@@ -44,9 +48,6 @@ def get_threshold(blurred):
     kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (1, 5)
     )
-    # kernel = cv2.getStructuringElement(
-    #     cv2.MORPH_CROSS, (5, 5)
-    # )
     threshold = cv2.morphologyEx(
         threshold, 
         cv2.MORPH_OPEN, 
@@ -91,7 +92,7 @@ def find_digits(threshold, image):
         print('x, y, w, h: {}'.format((x, y, w, h)))
 
         # get the digit of the contours
-        if w >= 10 and (h >= 60 and h <= 90):
+        if w >= 10 and (h >= 60 and h <= 100):
             digitsCnts.append(c)
             cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 1)
         '''
@@ -110,13 +111,14 @@ def find_digits(threshold, image):
     print('digits contours detected : {}'.format(len(digitsCnts)))
     
     # if digits not found throw assertion error
-    assert len(digitsCnts) > 0, "Failed to find digit's position"
+    # assert len(digitsCnts) > 0, "Failed to find digit's position"
 
     # sort the contours from left-to-right
-    digitsCnts = contours.sort_contours(
-        digitsCnts,
-        method="left-to-right"
-    )[0]
+    if digitsCnts:
+        digitsCnts = contours.sort_contours(
+            digitsCnts,
+            method="left-to-right"
+        )[0]
     return digitsCnts
 
 def recognize_digits(image, threshold, digitsCnts):
@@ -128,39 +130,43 @@ def recognize_digits(image, threshold, digitsCnts):
         # get region of interest (roi) from threshold image
         roi = threshold[y : y+h, x : x+w]
         # print('roi: {}'.format(roi))
+        
+        if w <= 30:
+            on = [0, 0, 1, 0, 0, 1, 0]
+        else:
+            # compute the width and height of each the 7 segments
+            (roiH, roiW) = roi.shape
+            (dW, dH) = (int(roiW * 0.25), int(roiH * 0.15))
+            dHC = int(roiH * 0.05)
+            print('roi shape: {}'.format(roi.shape))
+            print('dw, dh: {}'.format((dW, dH)))
+            print('dHC: {}'.format(dHC))
 
-        # compute the width and height of each the 7 segments
-        (roiH, roiW) = roi.shape
-        (dW, dH) = (int(roiW * 0.25), int(roiH * 0.15))
-        dHC = int(roiH * 0.05)
-        print('roi shape: {}'.format(roi.shape))
-        print('dw, dh: {}'.format((dW, dH)))
-        print('dHC: {}'.format(dHC))
+            # define the set of 7 segments
+            segments = [
+                ((0, 0), (w, dH)),          # top
+                ((0, 0), (dW, h // 2)),     # top-left
+                ((w - dW, 0), (w, h // 2)), # top-right
+                ((0, (h // 2) - dHC), (w, (h // 2) + dHC)),  # center
+                ((0, h // 2), (dW, h)),     # bottom-left
+                ((w - dW, h // 2), (w, h)), # bottom-right
+                ((0, h -dH), (w, h))        # bottom
+            ]
+            # prepare the key of digit
+            on = [0] * len(segments)
 
-        # define the set of 7 segments
-        segments = [
-            ((0, 0), (w, dH)),          # top
-            ((0, 0), (dW, h // 2)),     # top-left
-            ((w - dW, 0), (w, h // 2)), # top-right
-            ((0, (h // 2) - dHC), (w, (h // 2) + dHC)),  # center
-            ((0, h // 2), (dW, h)),     # bottom-left
-            ((w - dW, h // 2), (w, h)), # bottom-right
-            ((0, h -dH), (w, h))        # bottom
-        ]
-        on = [0] * len(segments)
+            # loop over the segments
+            for (i, ((xA, yA), (xB, yB))) in enumerate(segments):
+                # extract the segment ROI
+                segROI = roi[yA:yB, xA:xB]
+                # count the total of thresholded pixel in the segment
+                total = cv2.countNonZero(segROI)
+                area = (xB - xA) * (yB - yA)
 
-        # loop over the segments
-        for (i, ((xA, yA), (xB, yB))) in enumerate(segments):
-            # extract the segment ROI
-            segROI = roi[yA:yB, xA:xB]
-            # count the total of thresholded pixel in the segment
-            total = cv2.countNonZero(segROI)
-            area = (xB - xA) * (yB - yA)
-
-            # if total number of non-zero pixel is greater 
-            # than 50% of the area, mark the segment as on
-            if total / float(area) > 0.4:
-                on[i] = 1
+                # if total number of non-zero pixel is greater 
+                # than 50% of the area, mark the segment as on
+                if total / float(area) > 0.4:
+                    on[i] = 1
 
         # lookup the digit
         if tuple(on) in DIGITS_LOOKUP.keys():
@@ -177,16 +183,39 @@ def recognize_digits(image, threshold, digitsCnts):
             )
     return digits
 
-if __name__ == '__main__':
-    image = load_image('test/4840.png')
+def test_datatest(img_path):
+    cwd = os.getcwd()
+    success = []
+    for img in os.listdir(os.path.join(cwd, img_path)):
+        main(os.path.join(cwd, img_path, img))
+        
+def main(img_name):
+    image = load_image(img_name)
     image, blurred = preprocessing(image, kernel=(7, 7))
-    threshold = get_threshold(blurred)
-    #threshold = get_adaptive_threshold(blurred)
+    # threshold = get_threshold(blurred)
+    threshold = get_adaptive_threshold(blurred)
     digitsCnts = find_digits(threshold, image)
     digits = recognize_digits(image, threshold, digitsCnts)
 
-    # print('Digits : {}'.format(digits))
+    print('Digits : {}'.format(digits))
     cv2.imshow('threshold', threshold)
     cv2.imshow('result', image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    image_test_path = 'test'
+    test_datatest(image_test_path)
+
+    # image = load_image('test/6A68Z.jpg')
+    # image, blurred = preprocessing(image, kernel=(7, 7))
+    # #threshold = get_threshold(blurred)
+    # threshold = get_adaptive_threshold(blurred)
+    # digitsCnts = find_digits(threshold, image)
+    # digits = recognize_digits(image, threshold, digitsCnts)
+
+    # # print('Digits : {}'.format(digits))
+    # cv2.imshow('threshold', threshold)
+    # cv2.imshow('result', image)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
